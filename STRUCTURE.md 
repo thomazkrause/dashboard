@@ -1,0 +1,68 @@
+# Estrutura do Projeto v0.3
+
+## 📁 Organização dos Arquivos
+
+### Arquivos Principais
+- `main.py` - Arquivo principal refatorado e simplificado
+- `tabs_manager.py` - Gerenciador central das abas
+
+### 📂 Pasta tabs/
+- `__init__.py` - Torna a pasta um pacote Python
+- `kpis_tab.py` - Aba de KPIs principais
+- `evolucao_tab.py` - Aba de evolução mensal por status
+- `faixa_cliente_tab.py` - Aba de análise por faixa de cliente
+- `ranking_tab.py` - Aba de ranking e concentração
+- `analises_visuais_tab.py` - Aba de análises visuais
+- `dados_detalhados_tab.py` - Aba de dados detalhados
+
+### Outros Módulos
+- `database.py` - Gerenciamento do banco de dados
+- `data_processor.py` - Processamento de dados
+- `metrics_calculator.py` - Cálculo de métricas
+- `visualizations.py` - Criação de gráficos
+- `ui_components.py` - Componentes de interface
+- `utils.py` - Funções utilitárias
+- `config.py` - Configurações centralizadas
+
+## 🎯 Benefícios da Nova Estrutura
+
+1. **Modularidade**: Cada aba é independente e reutilizável
+2. **Manutenibilidade**: Fácil de modificar componentes específicos
+3. **Escalabilidade**: Simples adicionar novas abas ou funcionalidades
+4. **Organização**: Código mais limpo e estruturado
+5. **Performance**: Carregamento otimizado por seção
+
+## 📊 Abas Implementadas
+
+### 1. KPIs Principais
+- Métricas básicas e avançadas
+- Insights automáticos
+- Análise de performance
+
+### 2. Evolução Mensal
+- Gráfico de evolução por status
+- Tabela de dados mensais
+- Análise de tendências
+
+### 3. Análise por Faixa
+- Resumo executivo por faixa
+- Distribuição de faturamento
+- Evolução mensal por faixa
+
+### 4. Ranking de Clientes
+- Análise de concentração
+- Top clientes detalhado
+- Análise de Pareto
+- Segmentação de clientes
+
+### 5. Análises Visuais
+- Status de pagamento
+- Métodos de pagamento
+- Análise temporal
+- Análises comparativas
+
+### 6. Dados Detalhados
+- Filtros avançados
+- Paginação inteligente
+- Opções de exportação
+- Resumos estatísticos

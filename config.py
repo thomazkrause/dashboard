@@ -37,3 +37,35 @@ FORMATO_MOEDA = {
     'separador_decimal': ',',
     'separador_milhar': '.'
 }
+
+# Configurações da Iugu
+IUGU_CONFIG = {
+    'api_base_url': 'https://api.iugu.com/v1',
+    'timeout': 30,
+    'max_retries': 3,
+    'batch_size': 100,
+    'default_sync_interval': 5,  # minutos
+    'status_mapping': {
+        'paid': 'Paga',
+        'pending': 'Pendente',
+        'canceled': 'Expirado',
+        'expired': 'Expirado',
+        'draft': 'Pendente'
+    },
+    'payment_method_keywords': {
+        'pix': 'PIX',
+        'cartão': 'Cartão de Crédito',
+        'card': 'Cartão de Crédito',
+        'boleto': 'Boleto',
+        'bank_slip': 'Boleto'
+    }
+}
+
+# Configurações de sincronização
+SYNC_CONFIG = {
+    'auto_backup_before_full_sync': True,
+    'max_history_months': 12,
+    'default_history_months': 6,
+    'sync_only_paid_default': False,
+    'progress_update_interval': 0.1  # segundos
+}
