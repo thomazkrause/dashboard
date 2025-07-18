@@ -10,86 +10,142 @@ class ProjecaoFaturamento:
         self.df = df
         self.ano_atual = 2025
         
-    def calcular_mrr_historico(self):
-        """Calcula o MRR (Monthly Recurring Revenue) histórico baseado nos dados reais"""
+    def get_mes_atual(self):
+        """Retorna o mês atual"""
+        return datetime.now().month
+    
+    def get_ultimo_mes_encerrado(self):
+        """Retorna o último mês que já foi encerrado (mês anterior ao atual)"""
+        mes_atual = self.get_mes_atual()
+        return mes_atual - 1 if mes_atual > 1 else 12
+        
+    def calcular_faturamento_historico(self):
+        """Calcula o faturamento bruto histórico baseado em todas as transações pagas"""
         if self.df.empty:
             return pd.DataFrame()
         
-        # Filtrar transações pagas OU transferências
-        condicao_paga = self.df['Situação'].str.lower() == 'paga'
+        # Filtrar apenas transações pagas
+        df_pagos = self.df[self.df['Situação'].str.lower() == 'paga'].copy()
         
-        if 'Paga com' in self.df.columns:
-            condicao_transferencia = self.df['Paga com'].str.lower().str.contains('transferência', na=False)
-            df_mrr = self.df[condicao_paga | condicao_transferencia].copy()
-        else:
-            df_mrr = self.df[condicao_paga].copy()
-        
-        if df_mrr.empty:
+        if df_pagos.empty:
             return pd.DataFrame()
         
-        if 'Data de criação' in df_mrr.columns:
-            df_mrr['Data de criação'] = pd.to_datetime(df_mrr['Data de criação'], errors='coerce')
-            df_mrr = df_mrr[df_mrr['Data de criação'].dt.year == self.ano_atual]
+        if 'Data de criação' in df_pagos.columns:
+            df_pagos['Data de criação'] = pd.to_datetime(df_pagos['Data de criação'], errors='coerce')
+            df_pagos = df_pagos[df_pagos['Data de criação'].dt.year == self.ano_atual]
             
-            if df_mrr.empty:
+            if df_pagos.empty:
                 return pd.DataFrame()
             
-            df_mrr['Mes_Ano'] = df_mrr['Data de criação'].dt.to_period('M')
-            mrr_historico = df_mrr.groupby('Mes_Ano')['Total'].sum().reset_index()
-            mrr_historico['Mes_Ano_Str'] = mrr_historico['Mes_Ano'].astype(str)
-            mrr_historico['Mes'] = mrr_historico['Mes_Ano'].dt.month
-            mrr_historico['Ano'] = mrr_historico['Mes_Ano'].dt.year
+            # Agrupar por mês e somar o faturamento bruto
+            df_pagos['Mes_Ano'] = df_pagos['Data de criação'].dt.to_period('M')
+            faturamento_historico = df_pagos.groupby('Mes_Ano')['Total'].sum().reset_index()
+            faturamento_historico['Mes_Ano_Str'] = faturamento_historico['Mes_Ano'].astype(str)
+            faturamento_historico['Mes'] = faturamento_historico['Mes_Ano'].dt.month
+            faturamento_historico['Ano'] = faturamento_historico['Mes_Ano'].dt.year
             
             # Ordenar por mês para garantir ordem correta
-            mrr_historico = mrr_historico.sort_values('Mes')
+            faturamento_historico = faturamento_historico.sort_values('Mes')
             
-            return mrr_historico
+            return faturamento_historico
         
         return pd.DataFrame()
     
-    def calcular_mrr_atual(self, mrr_historico):
-        """Calcula o MRR atual baseado no último mês com dados"""
-        if mrr_historico.empty:
-            return 10000
+    def calcular_faturamento_base(self, faturamento_historico):
+        """Calcula o faturamento base para projeção (último mês encerrado)"""
+        if faturamento_historico.empty:
+            return 50000  # Valor padrão para demonstração quando não há dados
         
-        # Pegar o último valor disponível (mais recente)
-        ultimo_mrr = mrr_historico['Total'].iloc[-1]
-        return ultimo_mrr
-    
-    def get_ultimo_mes_com_dados(self, mrr_historico):
-        """Retorna o último mês que tem dados reais"""
-        if mrr_historico.empty:
-            return datetime.now().month - 1  # Mês anterior ao atual
+        ultimo_mes_encerrado = self.get_ultimo_mes_encerrado()
         
-        return mrr_historico['Mes'].iloc[-1]
+        # Filtrar apenas dados até o último mês encerrado
+        dados_ate_mes_encerrado = faturamento_historico[faturamento_historico['Mes'] <= ultimo_mes_encerrado]
+        
+        if dados_ate_mes_encerrado.empty:
+            # Se não há dados até o mês encerrado, usar o último disponível
+            ultimo_faturamento = faturamento_historico['Total'].iloc[-1]
+        else:
+            # Usar o último mês encerrado com dados
+            ultimo_faturamento = dados_ate_mes_encerrado['Total'].iloc[-1]
+        
+        return ultimo_faturamento
     
-    def get_estatisticas_mrr(self):
-        """Retorna estatísticas detalhadas sobre o MRR calculado"""
+    def calcular_faturamento_mes_atual(self, faturamento_historico):
+        """Calcula faturamento atual do mês corrente e faz projeção"""
+        mes_atual = self.get_mes_atual()
+        ultimo_mes_encerrado = self.get_ultimo_mes_encerrado()
+        
+        # Faturamento atual do mês corrente (até hoje)
+        faturamento_atual_mes = 0
+        if not faturamento_historico.empty:
+            dados_mes_atual = faturamento_historico[faturamento_historico['Mes'] == mes_atual]
+            if not dados_mes_atual.empty:
+                faturamento_atual_mes = dados_mes_atual['Total'].iloc[0]
+        
+        # Faturamento do mês anterior (base para comparação)
+        faturamento_mes_anterior = 0
+        if not faturamento_historico.empty:
+            dados_mes_anterior = faturamento_historico[faturamento_historico['Mes'] == ultimo_mes_encerrado]
+            if not dados_mes_anterior.empty:
+                faturamento_mes_anterior = dados_mes_anterior['Total'].iloc[0]
+        
+        # Calcular diferença (novas receitas)
+        diferenca_receitas = faturamento_atual_mes - faturamento_mes_anterior if faturamento_mes_anterior > 0 else 0
+        
+        # Projeção para o mês atual (baseada no crescimento observado)
+        if faturamento_mes_anterior > 0 and diferenca_receitas > 0:
+            # Se há crescimento, projeta continuidade
+            projecao_mes_atual = faturamento_mes_anterior + diferenca_receitas
+        elif faturamento_mes_anterior > 0:
+            # Se não há crescimento significativo, usa o mês anterior como base
+            projecao_mes_atual = faturamento_mes_anterior
+        else:
+            # Se não há dados do mês anterior, usa valor atual ou padrão
+            projecao_mes_atual = faturamento_atual_mes if faturamento_atual_mes > 0 else 50000
+        
+        return {
+            'faturamento_atual_mes': faturamento_atual_mes,
+            'faturamento_mes_anterior': faturamento_mes_anterior,
+            'diferenca_receitas': diferenca_receitas,
+            'projecao_mes_atual': projecao_mes_atual,
+            'percentual_crescimento': (diferenca_receitas / faturamento_mes_anterior * 100) if faturamento_mes_anterior > 0 else 0
+        }
+    
+    def get_ultimo_mes_com_dados_encerrado(self, faturamento_historico):
+        """Retorna o último mês encerrado que tem dados reais"""
+        if faturamento_historico.empty:
+            return self.get_ultimo_mes_encerrado()
+        
+        ultimo_mes_encerrado = self.get_ultimo_mes_encerrado()
+        
+        # Filtrar apenas dados até o último mês encerrado
+        dados_ate_mes_encerrado = faturamento_historico[faturamento_historico['Mes'] <= ultimo_mes_encerrado]
+        
+        if dados_ate_mes_encerrado.empty:
+            return self.get_ultimo_mes_encerrado()
+        
+        return dados_ate_mes_encerrado['Mes'].iloc[-1]
+    
+    def get_estatisticas_faturamento(self):
+        """Retorna estatísticas detalhadas sobre o faturamento"""
         if self.df.empty:
             return {}
         
         total_transacoes = len(self.df)
         transacoes_pagas = len(self.df[self.df['Situação'].str.lower() == 'paga'])
-        
-        transacoes_transferencia = 0
-        transacoes_mrr_total = transacoes_pagas
-        
-        if 'Paga com' in self.df.columns:
-            mask_transferencia = self.df['Paga com'].str.lower().str.contains('transferência', na=False)
-            transacoes_transferencia = len(self.df[mask_transferencia])
-            
-            mask_paga = self.df['Situação'].str.lower() == 'paga'
-            transacoes_mrr_total = len(self.df[mask_paga | mask_transferencia])
+        valor_total_pago = self.df[self.df['Situação'].str.lower() == 'paga']['Total'].sum()
+        valor_total_geral = self.df['Total'].sum()
         
         return {
             'total_transacoes': total_transacoes,
             'transacoes_pagas': transacoes_pagas,
-            'transacoes_transferencia': transacoes_transferencia,
-            'transacoes_mrr_total': transacoes_mrr_total,
-            'percentual_mrr': (transacoes_mrr_total / total_transacoes * 100) if total_transacoes > 0 else 0
+            'valor_total_pago': valor_total_pago,
+            'valor_total_geral': valor_total_geral,
+            'percentual_pago': (transacoes_pagas / total_transacoes * 100) if total_transacoes > 0 else 0,
+            'percentual_valor_pago': (valor_total_pago / valor_total_geral * 100) if valor_total_geral > 0 else 0
         }
     
-    def gerar_projecao_anual(self, mrr_historico, taxa_crescimento_mensal):
+    def gerar_projecao_anual(self, faturamento_historico, taxa_crescimento_mensal):
         """Gera a projeção anual completa (histórico + projeção)"""
         meses_2025 = []
         nomes_meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
@@ -110,46 +166,102 @@ class ProjecaoFaturamento:
         df_completo = pd.DataFrame(meses_2025)
         
         # Mergir com dados históricos
-        if not mrr_historico.empty:
+        if not faturamento_historico.empty:
             df_completo = df_completo.merge(
-                mrr_historico[['Mes', 'Ano', 'Total']], 
+                faturamento_historico[['Mes', 'Ano', 'Total']], 
                 on=['Mes', 'Ano'], 
                 how='left'
             )
         else:
             df_completo['Total'] = np.nan
         
-        # Calcular MRR base para projeção
-        mrr_base = self.calcular_mrr_atual(mrr_historico)
-        ultimo_mes_dados = self.get_ultimo_mes_com_dados(mrr_historico)
+        # Calcular informações para projeção
+        faturamento_base = self.calcular_faturamento_base(faturamento_historico)
+        ultimo_mes_dados_encerrado = self.get_ultimo_mes_com_dados_encerrado(faturamento_historico)
+        ultimo_mes_encerrado = self.get_ultimo_mes_encerrado()
+        mes_atual = self.get_mes_atual()
+        
+        # Calcular projeção para o mês atual
+        info_mes_atual = self.calcular_faturamento_mes_atual(faturamento_historico)
         
         # **DEBUG EXPANDIDO**
-        with st.expander("🔍 **Debug Detalhado do Cálculo MRR**", expanded=True):
+        with st.expander("🔍 **Debug Detalhado do Cálculo de Projeção**", expanded=True):
             st.write("### 📊 **Informações Base:**")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("💰 MRR Base", f"R$ {mrr_base:,.2f}")
+                st.metric("💰 Faturamento Base", f"R$ {faturamento_base:,.2f}")
             with col2:
-                st.metric("📅 Último Mês c/ Dados", nomes_meses[ultimo_mes_dados-1] if ultimo_mes_dados <= 12 else "N/A")
+                st.metric("📅 Último Mês Encerrado", nomes_meses[ultimo_mes_encerrado-1])
             with col3:
+                st.metric("📊 Mês Atual", nomes_meses[mes_atual-1])
+            with col4:
                 st.metric("📈 Taxa Crescimento", f"{taxa_crescimento_mensal}%")
             
-            st.write("### 📋 **Dados Históricos Encontrados:**")
-            if not mrr_historico.empty:
-                historico_debug = mrr_historico.copy()
+            # Análise específica do mês atual
+            st.write("### 🎯 **Análise do Mês Atual:**")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    f"💵 {nomes_meses[mes_atual-1]} (Atual)",
+                    f"R$ {info_mes_atual['faturamento_atual_mes']:,.2f}",
+                    help="Faturamento já realizado no mês atual"
+                )
+            
+            with col2:
+                st.metric(
+                    f"📊 {nomes_meses[ultimo_mes_encerrado-1]} (Anterior)",
+                    f"R$ {info_mes_atual['faturamento_mes_anterior']:,.2f}",
+                    help="Faturamento do mês anterior (base para comparação)"
+                )
+            
+            with col3:
+                delta_valor = info_mes_atual['diferenca_receitas']
+                delta_cor = "normal" if delta_valor >= 0 else "inverse"
+                st.metric(
+                    "📈 Diferença",
+                    f"R$ {abs(delta_valor):,.2f}",
+                    delta=f"{info_mes_atual['percentual_crescimento']:+.1f}%",
+                    help="Diferença entre mês atual e anterior"
+                )
+            
+            with col4:
+                st.metric(
+                    f"🔮 Projeção {nomes_meses[mes_atual-1]}",
+                    f"R$ {info_mes_atual['projecao_mes_atual']:,.2f}",
+                    help="Projeção para o mês atual baseada na tendência"
+                )
+            
+            # Explicação da lógica do mês atual
+            if info_mes_atual['diferenca_receitas'] > 0:
+                st.success(f"✅ **Crescimento Detectado**: O mês atual já tem R$ {info_mes_atual['diferenca_receitas']:,.2f} a mais que o mês anterior. Projetando continuidade do crescimento.")
+            elif info_mes_atual['diferenca_receitas'] < 0:
+                st.warning(f"⚠️ **Redução Detectada**: O mês atual tem R$ {abs(info_mes_atual['diferenca_receitas']):,.2f} a menos que o mês anterior. Projeção conservadora baseada no mês anterior.")
+            else:
+                st.info("📊 **Estabilidade**: Faturamento similar ao mês anterior. Projeção mantém o nível atual.")
+            
+            st.write("### 📋 **Faturamento Histórico Encontrado:**")
+            if not faturamento_historico.empty:
+                historico_debug = faturamento_historico.copy()
                 historico_debug['Mes_Nome'] = historico_debug['Mes'].apply(lambda x: nomes_meses[x-1])
                 historico_debug['Total_Formatado'] = historico_debug['Total'].apply(lambda x: f"R$ {x:,.2f}")
+                historico_debug['Status_Mes'] = historico_debug['Mes'].apply(
+                    lambda x: "🔒 Encerrado" if x < mes_atual else ("📅 Em andamento" if x == mes_atual else "⏳ Futuro")
+                )
                 st.dataframe(
-                    historico_debug[['Mes_Nome', 'Total_Formatado']].rename(columns={'Mes_Nome': 'Mês', 'Total_Formatado': 'MRR Real'}),
+                    historico_debug[['Mes_Nome', 'Total_Formatado', 'Status_Mes']].rename(
+                        columns={'Mes_Nome': 'Mês', 'Total_Formatado': 'Faturamento Real', 'Status_Mes': 'Status'}
+                    ),
                     use_container_width=True,
                     hide_index=True
                 )
             else:
                 st.info("❌ Nenhum dado histórico encontrado")
             
-            st.write("### 🧮 **Cálculo da Projeção (Passo a Passo):**")
-            st.write("**Fórmula:** `MRR_Projetado = MRR_Base × (1 + Taxa/100)^Meses_Crescimento`")
+            st.write("### 🧮 **Metodologia de Cálculo:**")
+            st.write("**Para meses futuros:** `Faturamento_Projetado = Faturamento_Base × (1 + Taxa/100)^Meses_Crescimento`")
+            st.write(f"**Para mês atual:** Comparação com {nomes_meses[ultimo_mes_encerrado-1]} + incremento de novas receitas detectadas")
             st.write("")
         
         # Lista para armazenar informações de debug
@@ -160,7 +272,7 @@ class ProjecaoFaturamento:
             mes_nome = nomes_meses[row['Mes']-1]
             
             if pd.isna(row['Total']):
-                if row['Mes'] <= ultimo_mes_dados:
+                if row['Mes'] < mes_atual:
                     # Mês passado sem dados
                     df_completo.at[idx, 'Total'] = 0
                     df_completo.at[idx, 'Tipo'] = 'Histórico'
@@ -168,17 +280,38 @@ class ProjecaoFaturamento:
                         'Mês': mes_nome,
                         'Tipo': 'Histórico (sem dados)',
                         'Valor': 'R$ 0,00',
-                        'Cálculo': 'Mês anterior sem dados históricos',
+                        'Cálculo': 'Mês encerrado sem dados históricos',
                         'Fórmula': 'N/A'
                     })
-                else:
-                    # Projeção: calcular crescimento a partir do último mês com dados
-                    meses_crescimento = row['Mes'] - ultimo_mes_dados
+                elif row['Mes'] == mes_atual:
+                    # Mês atual - usar projeção especial
+                    df_completo.at[idx, 'Total'] = info_mes_atual['projecao_mes_atual']
+                    df_completo.at[idx, 'Tipo'] = 'Projeção Atual'
                     
-                    if mrr_base > 0:
-                        valor_projetado = mrr_base * ((1 + taxa_crescimento_mensal/100) ** meses_crescimento)
+                    calculo_descricao = f"Base: {nomes_meses[ultimo_mes_encerrado-1]} + incremento observado"
+                    if info_mes_atual['diferenca_receitas'] != 0:
+                        formula_descricao = f"{info_mes_atual['faturamento_mes_anterior']:,.2f} + {info_mes_atual['diferenca_receitas']:,.2f} = {info_mes_atual['projecao_mes_atual']:,.2f}"
                     else:
-                        valor_projetado = 10000 * ((1 + taxa_crescimento_mensal/100) ** meses_crescimento)
+                        formula_descricao = f"Baseado no mês anterior: {info_mes_atual['projecao_mes_atual']:,.2f}"
+                    
+                    debug_calculos.append({
+                        'Mês': mes_nome,
+                        'Tipo': 'Projeção (mês atual)',
+                        'Valor': f'R$ {info_mes_atual["projecao_mes_atual"]:,.2f}',
+                        'Cálculo': calculo_descricao,
+                        'Fórmula': formula_descricao
+                    })
+                else:
+                    # Meses futuros - usar crescimento exponencial
+                    meses_crescimento = row['Mes'] - mes_atual
+                    
+                    # Base para crescimento é a projeção do mês atual
+                    base_crescimento = info_mes_atual['projecao_mes_atual']
+                    
+                    if base_crescimento > 0:
+                        valor_projetado = base_crescimento * ((1 + taxa_crescimento_mensal/100) ** meses_crescimento)
+                    else:
+                        valor_projetado = 50000 * ((1 + taxa_crescimento_mensal/100) ** meses_crescimento)
                     
                     df_completo.at[idx, 'Total'] = valor_projetado
                     df_completo.at[idx, 'Tipo'] = 'Projeção'
@@ -188,76 +321,80 @@ class ProjecaoFaturamento:
                     
                     debug_calculos.append({
                         'Mês': mes_nome,
-                        'Tipo': 'Projeção',
+                        'Tipo': 'Projeção (futuro)',
                         'Valor': f'R$ {valor_projetado:,.2f}',
-                        'Cálculo': f'{meses_crescimento} meses após {nomes_meses[ultimo_mes_dados-1]}',
-                        'Fórmula': f'{mrr_base:,.2f} × (1.{taxa_crescimento_mensal:02.0f})^{meses_crescimento} = {mrr_base:,.2f} × {fator_crescimento:.6f}'
+                        'Cálculo': f'{meses_crescimento} meses após {nomes_meses[mes_atual-1]} (projetado)',
+                        'Fórmula': f'{base_crescimento:,.2f} × (1.{taxa_crescimento_mensal:02.0f})^{meses_crescimento} = {base_crescimento:,.2f} × {fator_crescimento:.6f}'
                     })
             else:
                 # Dados históricos reais
+                if row['Mes'] < mes_atual:
+                    status_mes = "Histórico (encerrado)"
+                elif row['Mes'] == mes_atual:
+                    status_mes = "Histórico (em andamento)"
+                else:
+                    status_mes = "Histórico (futuro)"
+                    
                 df_completo.at[idx, 'Tipo'] = 'Histórico'
                 debug_calculos.append({
                     'Mês': mes_nome,
-                    'Tipo': 'Histórico (real)',
+                    'Tipo': status_mes,
                     'Valor': f'R$ {row["Total"]:,.2f}',
                     'Cálculo': 'Dados reais do sistema',
-                    'Fórmula': 'Soma das transações MRR do mês'
+                    'Fórmula': 'Soma de todas as transações pagas do mês'
                 })
         
-        # Mostrar tabela de debug dentro do expander
-        with st.expander("🔍 **Debug Detalhado do Cálculo MRR**", expanded=True):
+        # Mostrar tabela de debug dentro do expander (SEM COR DE FUNDO)
+        with st.expander("🔍 **Debug Detalhado do Cálculo de Projeção**", expanded=True):
             st.write("### 📊 **Detalhamento Completo por Mês:**")
             
             # Criar DataFrame para o debug
             df_debug = pd.DataFrame(debug_calculos)
             
-            # Aplicar cores baseadas no tipo
-            def highlight_tipo(row):
-                if 'Histórico (real)' in row['Tipo']:
-                    return ['background-color: #d4edda'] * len(row)  # Verde claro
-                elif 'Projeção' in row['Tipo']:
-                    return ['background-color: #fff3cd'] * len(row)  # Amarelo claro
-                else:
-                    return ['background-color: #f8d7da'] * len(row)  # Vermelho claro (sem dados)
+            # Exibir tabela SEM formatação de cor
+            st.dataframe(df_debug, use_container_width=True, hide_index=True)
             
-            styled_debug = df_debug.style.apply(highlight_tipo, axis=1)
-            st.dataframe(styled_debug, use_container_width=True, hide_index=True)
-            
-            st.write("### 🎯 **Legenda das Cores:**")
-            col1, col2, col3 = st.columns(3)
+            st.write("### 🎯 **Legenda dos Tipos:**")
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.success("🟢 **Verde**: Dados históricos reais")
+                st.info("📊 **Histórico**: Dados reais do sistema")
             with col2:
-                st.warning("🟡 **Amarelo**: Projeções calculadas")
+                st.info("🎯 **Projeção (mês atual)**: Baseada na comparação com mês anterior")
             with col3:
-                st.error("🔴 **Vermelho**: Meses sem dados")
+                st.info("🔮 **Projeção (futuro)**: Crescimento exponencial")
+            with col4:
+                st.info("❌ **Sem dados**: Meses sem faturamento")
             
             st.write("### 📈 **Validação dos Cálculos:**")
             
             # Mostrar alguns exemplos de validação
-            projecoes = [calc for calc in debug_calculos if calc['Tipo'] == 'Projeção']
+            projecoes = [calc for calc in debug_calculos if 'Projeção' in calc['Tipo']]
             if projecoes:
                 st.write("**Exemplos de Validação Manual:**")
                 for i, proj in enumerate(projecoes[:3]):  # Mostrar apenas os 3 primeiros
                     st.code(f"""
 Mês: {proj['Mês']}
+Tipo: {proj['Tipo']}
 {proj['Fórmula']}
 Resultado: {proj['Valor']}
                     """)
             
             # Resumo final
-            total_historico = len([c for c in debug_calculos if 'Histórico (real)' in c['Tipo']])
-            total_projecoes = len([c for c in debug_calculos if 'Projeção' in c['Tipo']])
+            total_historico = len([c for c in debug_calculos if 'Histórico' in c['Tipo']])
+            total_projecao_atual = len([c for c in debug_calculos if 'mês atual' in c['Tipo']])
+            total_projecao_futura = len([c for c in debug_calculos if 'futuro' in c['Tipo']])
             total_sem_dados = len([c for c in debug_calculos if 'sem dados' in c['Tipo']])
             
             st.write("### 📊 **Resumo:**")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("📅 Meses c/ Dados Reais", total_historico)
+                st.metric("📊 Dados Históricos", total_historico)
             with col2:
-                st.metric("🔮 Meses Projetados", total_projecoes)
+                st.metric("🎯 Projeção Mês Atual", total_projecao_atual)
             with col3:
-                st.metric("❌ Meses sem Dados", total_sem_dados)
+                st.metric("🔮 Projeções Futuras", total_projecao_futura)
+            with col4:
+                st.metric("❌ Sem Dados", total_sem_dados)
         
         return df_completo
     
@@ -266,6 +403,7 @@ Resultado: {proj['Valor']}
         fig = go.Figure()
         
         df_historico = df_projecao[df_projecao['Tipo'] == 'Histórico']
+        df_projecao_atual = df_projecao[df_projecao['Tipo'] == 'Projeção Atual']
         df_projecao_futura = df_projecao[df_projecao['Tipo'] == 'Projeção']
         
         if not df_historico.empty:
@@ -273,10 +411,21 @@ Resultado: {proj['Valor']}
                 x=df_historico['Nome_Mes'],
                 y=df_historico['Total'],
                 mode='lines+markers',
-                name='MRR Real (Paga + Transferência)',
+                name='Faturamento Real',
                 line=dict(color='#2E8B57', width=3),
                 marker=dict(size=8, color='#2E8B57'),
                 hovertemplate='<b>%{x}</b><br>Valor: R$ %{y:,.2f}<br>Status: Real<extra></extra>'
+            ))
+        
+        if not df_projecao_atual.empty:
+            fig.add_trace(go.Scatter(
+                x=df_projecao_atual['Nome_Mes'],
+                y=df_projecao_atual['Total'],
+                mode='lines+markers',
+                name='Projeção Mês Atual',
+                line=dict(color='#FF6B35', width=3),
+                marker=dict(size=10, color='#FF6B35', symbol='star'),
+                hovertemplate='<b>%{x}</b><br>Valor: R$ %{y:,.2f}<br>Status: Projeção Atual<extra></extra>'
             ))
         
         if not df_projecao_futura.empty:
@@ -284,16 +433,16 @@ Resultado: {proj['Valor']}
                 x=df_projecao_futura['Nome_Mes'],
                 y=df_projecao_futura['Total'],
                 mode='lines+markers',
-                name='Projeção MRR',
+                name='Projeção Futura',
                 line=dict(color='#FF8C00', width=3, dash='dash'),
                 marker=dict(size=8, color='#FF8C00'),
                 hovertemplate='<b>%{x}</b><br>Valor: R$ %{y:,.2f}<br>Status: Projeção<extra></extra>'
             ))
         
         fig.update_layout(
-            title=f'📈 Projeção de MRR (Monthly Recurring Revenue) - {self.ano_atual}',
+            title=f'📈 Projeção de Faturamento Bruto - {self.ano_atual}',
             xaxis_title='Mês',
-            yaxis_title='MRR (R$)',
+            yaxis_title='Faturamento (R$)',
             height=500,
             hovermode='x unified',
             legend=dict(
@@ -312,33 +461,36 @@ Resultado: {proj['Valor']}
     
     def mostrar_interface(self):
         """Mostra a interface completa da projeção de faturamento"""
-        st.header("📊 Projeção de MRR (Monthly Recurring Revenue) 2025")
+        st.header("📊 Projeção de Faturamento Bruto 2025")
         
-        mrr_historico = self.calcular_mrr_historico()
-        stats_mrr = self.get_estatisticas_mrr()
+        faturamento_historico = self.calcular_faturamento_historico()
+        stats_faturamento = self.get_estatisticas_faturamento()
+        info_mes_atual = self.calcular_faturamento_mes_atual(faturamento_historico)
         
-        with st.expander("ℹ️ Critérios para Cálculo do MRR"):
+        with st.expander("ℹ️ Critérios para Projeção de Faturamento"):
             col1, col2 = st.columns(2)
             
             with col1:
                 st.info("""
-                **📋 Transações incluídas no MRR:**
-                - ✅ Situação = "Paga" 
-                - 🏦 Método = "Transferência" (qualquer situação)
+                **📋 Metodologia:**
+                - ✅ Apenas transações com situação "Paga"
+                - 🎯 Mês atual: Comparação com mês anterior + novas receitas
+                - 🔮 Meses futuros: Crescimento exponencial baseado na taxa
                 
-                **🎯 Objetivo:** Capturar receita recorrente real e comprometida
+                **🎯 Objetivo:** Projeção inteligente considerando tendências atuais
                 """)
             
             with col2:
-                if stats_mrr:
-                    st.metric("📊 Total de Transações", stats_mrr['total_transacoes'])
-                    st.metric("💰 Transações no MRR", stats_mrr['transacoes_mrr_total'])
-                    st.metric("📈 % MRR do Total", f"{stats_mrr['percentual_mrr']:.1f}%")
+                if stats_faturamento:
+                    st.metric("📊 Total de Transações", stats_faturamento['total_transacoes'])
+                    st.metric("💰 Transações Pagas", stats_faturamento['transacoes_pagas'])
+                    st.metric("📈 % Transações Pagas", f"{stats_faturamento['percentual_pago']:.1f}%")
+                    st.metric("💵 Valor Total Pago", f"R$ {stats_faturamento['valor_total_pago']:,.2f}")
         
-        if mrr_historico.empty:
-            st.warning("⚠️ Nenhum dado de MRR encontrado para 2025. A projeção será baseada em valores estimados.")
+        if faturamento_historico.empty:
+            st.warning("⚠️ Nenhum dado de faturamento encontrado para 2025. A projeção será baseada em valores estimados.")
         else:
-            st.success(f"✅ {len(mrr_historico)} meses com dados de MRR encontrados.")
+            st.success(f"✅ {len(faturamento_historico)} meses com dados de faturamento encontrados.")
         
         col1, col2, col3 = st.columns([2, 1, 1])
         
@@ -353,7 +505,7 @@ Resultado: {proj['Valor']}
                 value=5.0,
                 step=0.1,
                 format="%.1f",
-                help="Taxa de crescimento mensal aplicada na projeção do MRR"
+                help="Taxa de crescimento mensal aplicada na projeção do faturamento"
             )
         
         with col3:
@@ -361,56 +513,58 @@ Resultado: {proj['Valor']}
                 st.rerun()
         
         # Gerar projeção (aqui o debug será mostrado)
-        df_projecao = self.gerar_projecao_anual(mrr_historico, taxa_crescimento)
+        df_projecao = self.gerar_projecao_anual(faturamento_historico, taxa_crescimento)
         
         # Calcular métricas
-        mrr_real_acumulado = df_projecao[df_projecao['Tipo'] == 'Histórico']['Total'].sum()
-        mrr_projetado = df_projecao[df_projecao['Tipo'] == 'Projeção']['Total'].sum()
-        mrr_total_ano = mrr_real_acumulado + mrr_projetado
+        faturamento_real_acumulado = df_projecao[df_projecao['Tipo'] == 'Histórico']['Total'].sum()
+        faturamento_projecao_atual = df_projecao[df_projecao['Tipo'] == 'Projeção Atual']['Total'].sum()
+        faturamento_projecao_futura = df_projecao[df_projecao['Tipo'] == 'Projeção']['Total'].sum()
+        faturamento_total_ano = faturamento_real_acumulado + faturamento_projecao_atual + faturamento_projecao_futura
         
-        mrr_atual = self.calcular_mrr_atual(mrr_historico)
+        faturamento_base = self.calcular_faturamento_base(faturamento_historico)
         
         # Mostrar KPIs
-        st.subheader("📊 Resumo da Projeção MRR")
+        st.subheader("📊 Resumo da Projeção de Faturamento")
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             st.metric(
-                "💰 MRR Real Acumulado (YTD)",
-                f"R$ {mrr_real_acumulado:,.2f}",
-                help="MRR real acumulado no ano (Paga + Transferência)"
+                "💰 Faturamento Real (YTD)",
+                f"R$ {faturamento_real_acumulado:,.2f}",
+                help="Faturamento real acumulado no ano"
             )
         
         with col2:
             st.metric(
-                "🔮 Projeção MRR Restante",
-                f"R$ {mrr_projetado:,.2f}",
-                help="Projeção de MRR para os meses restantes do ano"
+                "🎯 Projeção Mês Atual",
+                f"R$ {faturamento_projecao_atual:,.2f}",
+                delta=f"{info_mes_atual['percentual_crescimento']:+.1f}%",
+                help="Projeção para o mês atual baseada na tendência observada"
             )
         
         with col3:
             st.metric(
-                "🎯 MRR Total Projetado 2025",
-                f"R$ {mrr_total_ano:,.2f}",
-                help="MRR total projetado para o ano"
+                "🔮 Projeção Restante",
+                f"R$ {faturamento_projecao_futura:,.2f}",
+                help="Projeção para os meses restantes do ano"
             )
         
         with col4:
             st.metric(
-                "📈 MRR Base",
-                f"R$ {mrr_atual:,.2f}",
-                help="MRR base usado para projeção"
+                "🎯 Total Projetado 2025",
+                f"R$ {faturamento_total_ano:,.2f}",
+                help="Faturamento total projetado para o ano"
             )
         
         with col5:
-            if mrr_real_acumulado > 0:
-                crescimento_anual = ((mrr_total_ano / mrr_real_acumulado) - 1) * 100
+            if faturamento_real_acumulado > 0:
+                crescimento_anual = ((faturamento_total_ano / faturamento_real_acumulado) - 1) * 100
             else:
                 crescimento_anual = 0
             st.metric(
                 "📊 Crescimento Anual",
                 f"{crescimento_anual:.1f}%",
-                help="Crescimento anual estimado do MRR"
+                help="Crescimento anual estimado"
             )
         
         # Gráfico principal
@@ -418,16 +572,16 @@ Resultado: {proj['Valor']}
         st.plotly_chart(fig, use_container_width=True)
         
         # Tabela detalhada
-        st.subheader("📋 Detalhamento Mensal do MRR")
+        st.subheader("📋 Detalhamento Mensal do Faturamento")
         
         df_tabela = df_projecao.copy()
         df_tabela['Total_Formatado'] = df_tabela['Total'].apply(lambda x: f"R$ {x:,.2f}")
         df_tabela['Status'] = df_tabela['Tipo'].apply(
-            lambda x: "✅ Real" if x == "Histórico" else "🔮 Projeção"
+            lambda x: "✅ Real" if x == "Histórico" else ("🎯 Projeção Atual" if x == "Projeção Atual" else "🔮 Projeção")
         )
         
         df_exibicao = df_tabela[['Nome_Mes', 'Total_Formatado', 'Status']].copy()
-        df_exibicao.columns = ['Mês', 'MRR', 'Status']
+        df_exibicao.columns = ['Mês', 'Faturamento', 'Status']
         
         mes_atual_nome = datetime.now().strftime('%b')
         
@@ -444,33 +598,86 @@ Resultado: {proj['Valor']}
         
         col1, col2 = st.columns(2)
         
+        ultimo_mes_encerrado = self.get_ultimo_mes_encerrado()
+        mes_atual = self.get_mes_atual()
+        nomes_meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
+                      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+        
         with col1:
             st.info(f"""
             **📅 Período Base:** Janeiro a Dezembro {self.ano_atual}
             
-            **📊 Metodologia MRR:**
+            **📊 Metodologia:**
             - ✅ Transações com situação "Paga"
-            - 🏦 Transações com método "Transferência" 
-            - 💰 MRR atual: R$ {mrr_atual:,.2f}
-            - 📈 Taxa de crescimento mensal: {taxa_crescimento:.1f}%
+            - 🔒 Último mês encerrado: {nomes_meses[ultimo_mes_encerrado-1]}
+            - 🎯 Mês atual ({nomes_meses[mes_atual-1]}): Projeção baseada na tendência
+            - 📈 Taxa de crescimento: {taxa_crescimento:.1f}%
             """)
         
         with col2:
-            meses_com_dados = len(mrr_historico) if not mrr_historico.empty else 0
-            mes_atual = datetime.now().month
+            meses_com_dados = len(faturamento_historico) if not faturamento_historico.empty else 0
             meses_projetados = 12 - mes_atual
             
             st.info(f"""
             **🔢 Estatísticas:**
             - Meses com dados reais: {meses_com_dados}
-            - Meses projetados: {meses_projetados}
-            - Transações no MRR: {stats_mrr.get('transacoes_mrr_total', 0)}
+            - Projeção mês atual: {nomes_meses[mes_atual-1]}
+            - Meses futuros projetados: {meses_projetados}
+            - Transações pagas: {stats_faturamento.get('transacoes_pagas', 0)}
             - Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}
             """)
         
+        # Análise detalhada do mês atual
+        st.subheader("🎯 Análise Detalhada do Mês Atual")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.info(f"""
+            **📊 {nomes_meses[mes_atual-1]} (Atual)**
+            
+            - Faturamento até agora: R$ {info_mes_atual['faturamento_atual_mes']:,.2f}
+            - Projeção para o mês: R$ {info_mes_atual['projecao_mes_atual']:,.2f}
+            """)
+        
+        with col2:
+            st.info(f"""
+            **📈 Comparação com {nomes_meses[ultimo_mes_encerrado-1]}**
+            
+            - Mês anterior: R$ {info_mes_atual['faturamento_mes_anterior']:,.2f}
+            - Diferença: R$ {info_mes_atual['diferenca_receitas']:,.2f}
+            - Variação: {info_mes_atual['percentual_crescimento']:+.1f}%
+            """)
+        
+        with col3:
+            if info_mes_atual['diferenca_receitas'] > 0:
+                st.success(f"""
+                **✅ Tendência Positiva**
+                
+                - Crescimento detectado
+                - Novas receitas: R$ {info_mes_atual['diferenca_receitas']:,.2f}
+                - Projeção otimista aplicada
+                """)
+            elif info_mes_atual['diferenca_receitas'] < 0:
+                st.warning(f"""
+                **⚠️ Tendência de Redução**
+                
+                - Redução de: R$ {abs(info_mes_atual['diferenca_receitas']):,.2f}
+                - Projeção conservadora
+                - Baseada no mês anterior
+                """)
+            else:
+                st.info(f"""
+                **📊 Tendência Estável**
+                
+                - Faturamento similar
+                - Projeção mantém nível atual
+                - Base: mês anterior
+                """)
+        
         # Cenários alternativos
-        if st.checkbox("🎯 Ver Cenários Alternativos de MRR"):
-            st.subheader("🔄 Análise de Cenários MRR")
+        if st.checkbox("🎯 Ver Cenários Alternativos de Faturamento"):
+            st.subheader("🔄 Análise de Cenários")
             
             cenarios = {
                 'Conservador': taxa_crescimento - 2,
@@ -481,7 +688,7 @@ Resultado: {proj['Valor']}
             resultados_cenarios = {}
             
             for nome_cenario, taxa_cenario in cenarios.items():
-                df_cenario = self.gerar_projecao_anual(mrr_historico, taxa_cenario)
+                df_cenario = self.gerar_projecao_anual(faturamento_historico, taxa_cenario)
                 total_cenario = df_cenario['Total'].sum()
                 resultados_cenarios[nome_cenario] = total_cenario
             
