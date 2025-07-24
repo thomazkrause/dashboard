@@ -53,8 +53,20 @@ class EvolucaoTab:
         df_mensal_status = self.df.groupby(['Mes_Ano', 'Situação'])['Total'].sum().reset_index()
         df_mensal_status['Mes_Ano_Str'] = df_mensal_status['Mes_Ano'].astype(str)
         
+        # Calcular clientes únicos pagantes por mês
+        df_clientes_unicos = None
+        if 'CPF/CNPJ' in self.df.columns:
+            df_clientes_unicos = self.df[self.df['Situação'].str.lower() == 'paga'].groupby('Mes_Ano')['CPF/CNPJ'].nunique().reset_index()
+            df_clientes_unicos['Mes_Ano_Str'] = df_clientes_unicos['Mes_Ano'].astype(str)
+            df_clientes_unicos.columns = ['Mes_Ano', 'Clientes_Unicos', 'Mes_Ano_Str']
+        
+        # Calcular churn mensal
+        from metrics_calculator import MetricsCalculator
+        calculator = MetricsCalculator(self.df)
+        df_churn = calculator.calculate_churn_mensal(self.df)
+        
         # Gráfico principal
-        fig_mensal = self.viz.create_evolucao_status_chart(df_mensal_status)
+        fig_mensal = self.viz.create_evolucao_status_chart(df_mensal_status, df_clientes_unicos, df_churn)
         st.plotly_chart(fig_mensal, use_container_width=True)
         
         # Resumo rápido da evolução

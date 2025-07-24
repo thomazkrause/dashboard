@@ -450,7 +450,15 @@ try:
                 df_mensal_status = df.groupby(['Mes_Ano', 'Situação'])['Total'].sum().reset_index()
                 df_mensal_status['Mes_Ano_Str'] = df_mensal_status['Mes_Ano'].astype(str)
                 
-                fig_mensal = viz.create_evolucao_status_chart(df_mensal_status)
+                # Calcular clientes únicos pagantes por mês
+                df_clientes_unicos = df[df['Situação'].str.lower() == 'paga'].groupby('Mes_Ano')['CPF/CNPJ'].nunique().reset_index()
+                df_clientes_unicos['Mes_Ano_Str'] = df_clientes_unicos['Mes_Ano'].astype(str)
+                df_clientes_unicos.columns = ['Mes_Ano', 'Clientes_Unicos', 'Mes_Ano_Str']
+                
+                # Calcular clientes em churn por mês
+                df_churn = calculator.calculate_churn_mensal(df)
+                
+                fig_mensal = viz.create_evolucao_status_chart(df_mensal_status, df_clientes_unicos, df_churn)
                 st.plotly_chart(fig_mensal, use_container_width=True)
             else:
                 st.warning("⚠️ Dados insuficientes para evolução mensal por status.")
