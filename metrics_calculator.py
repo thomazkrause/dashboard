@@ -116,3 +116,63 @@ class MetricsCalculator:
         ranking['Faixa'] = ranking['Valor_Total'].apply(classificar_cliente_faixa)
         
         return ranking
+    
+    def calculate_churn_mensal(self, df):
+        """Calcula clientes em churn por mês."""
+        from config import ANALISE_CONFIG
+        
+        if not all(col in df.columns for col in ['CPF/CNPJ', 'Data de criação', 'Situação', 'Mes_Ano']):
+            return pd.DataFrame()
+        
+        # Filtrar apenas pagamentos
+        df_pagos = df[df['Situação'].str.lower() == 'paga'].copy()
+        
+        if df_pagos.empty:
+            return pd.DataFrame()
+        
+        # Obter último pagamento de cada cliente
+        ultimo_pagamento = df_pagos.groupby('CPF/CNPJ')['Data de criação'].max().reset_index()
+        ultimo_pagamento.columns = ['CPF/CNPJ', 'Ultimo_Pagamento']
+        
+        # Obter todos os períodos únicos
+        periodos = sorted(df['Mes_Ano'].unique())
+        
+        churn_mensal = []
+        
+        for i, periodo in enumerate(periodos):
+            if i == 0:  # Primeiro período não tem churn
+                churn_mensal.append({
+                    'Mes_Ano': periodo,
+                    'Clientes_Churn': 0,
+                    'Mes_Ano_Str': str(periodo)
+                })
+                continue
+            
+            # Data de corte do período (último dia do mês)
+            try:
+                data_corte = pd.to_datetime(f"{periodo}-01") + pd.offsets.MonthEnd(0)
+                
+                # Clientes que fizeram último pagamento antes de X dias da data de corte
+                dias_churn = ANALISE_CONFIG['dias_churn']
+                data_limite_churn = data_corte - timedelta(days=dias_churn)
+                
+                # Contar clientes em churn
+                clientes_churn = ultimo_pagamento[
+                    ultimo_pagamento['Ultimo_Pagamento'] <= data_limite_churn
+                ].shape[0]
+                
+                churn_mensal.append({
+                    'Mes_Ano': periodo,
+                    'Clientes_Churn': clientes_churn,
+                    'Mes_Ano_Str': str(periodo)
+                })
+                
+            except Exception as e:
+                # Em caso de erro, colocar 0
+                churn_mensal.append({
+                    'Mes_Ano': periodo,
+                    'Clientes_Churn': 0,
+                    'Mes_Ano_Str': str(periodo)
+                })
+        
+        return pd.DataFrame(churn_mensal)

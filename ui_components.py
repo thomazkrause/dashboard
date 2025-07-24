@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd  # Add this import
 from utils import formatar_moeda, get_ordem_faixas
 
 class UIComponents:
@@ -51,8 +52,30 @@ class UIComponents:
             st.metric("🔄 Clientes Recorrentes", metrics['clientes_recorrentes'])
     
     @staticmethod
+    def _safe_int(value):
+        """Converte valor para int de forma segura, retornando 0 se NaN."""
+        try:
+            if pd.isna(value):
+                return 0
+            return int(value)
+        except (ValueError, TypeError):
+            return 0
+    
+    @staticmethod
+    def _safe_float(value):
+        """Converte valor para float de forma segura, retornando 0.0 se NaN."""
+        try:
+            if pd.isna(value):
+                return 0.0
+            return float(value)
+        except (ValueError, TypeError):
+            return 0.0
+    
+    @staticmethod
     def display_faixa_summary(faixa_stats):
         """Exibe resumo por faixa de cliente."""
+        import pandas as pd  # Import necessário para pd.isna()
+        
         st.subheader("📊 Resumo por Faixa de Cliente")
         col1, col2, col3 = st.columns(3)
         
@@ -63,33 +86,45 @@ class UIComponents:
                 grupo_a = faixa_stats.loc['Grupo A (R$ 1.500+)']
                 st.metric(
                     "🥇 Grupo A (Premium)",
-                    formatar_moeda(grupo_a['Faturamento_Total']),
-                    f"{grupo_a['Percentual_Faturamento']:.1f}% do total"
+                    formatar_moeda(UIComponents._safe_float(grupo_a['Faturamento_Total'])),
+                    f"{UIComponents._safe_float(grupo_a['Percentual_Faturamento']):.1f}% do total"
                 )
-                st.write(f"👥 {int(grupo_a['Qtd_Clientes'])} clientes")
-                st.write(f"🎫 Ticket médio: {formatar_moeda(grupo_a['Ticket_Medio'])}")
+                st.write(f"👥 {UIComponents._safe_int(grupo_a['Qtd_Clientes'])} clientes")
+                st.write(f"🎫 Ticket médio: {formatar_moeda(UIComponents._safe_float(grupo_a['Ticket_Medio']))}")
+            else:
+                st.metric("🥇 Grupo A (Premium)", "R$ 0,00", "0.0% do total")
+                st.write("👥 0 clientes")
+                st.write("🎫 Ticket médio: R$ 0,00")
         
         with col2:
             if 'Grupo B (R$ 500-1.499)' in faixa_stats.index:
                 grupo_b = faixa_stats.loc['Grupo B (R$ 500-1.499)']
                 st.metric(
                     "🥈 Grupo B (Médio)",
-                    formatar_moeda(grupo_b['Faturamento_Total']),
-                    f"{grupo_b['Percentual_Faturamento']:.1f}% do total"
+                    formatar_moeda(UIComponents._safe_float(grupo_b['Faturamento_Total'])),
+                    f"{UIComponents._safe_float(grupo_b['Percentual_Faturamento']):.1f}% do total"
                 )
-                st.write(f"👥 {int(grupo_b['Qtd_Clientes'])} clientes")
-                st.write(f"🎫 Ticket médio: {formatar_moeda(grupo_b['Ticket_Medio'])}")
+                st.write(f"👥 {UIComponents._safe_int(grupo_b['Qtd_Clientes'])} clientes")
+                st.write(f"🎫 Ticket médio: {formatar_moeda(UIComponents._safe_float(grupo_b['Ticket_Medio']))}")
+            else:
+                st.metric("🥈 Grupo B (Médio)", "R$ 0,00", "0.0% do total")
+                st.write("👥 0 clientes")
+                st.write("🎫 Ticket médio: R$ 0,00")
         
         with col3:
             if 'Grupo C (R$ 0-499)' in faixa_stats.index:
                 grupo_c = faixa_stats.loc['Grupo C (R$ 0-499)']
                 st.metric(
                     "🥉 Grupo C (Básico)",
-                    formatar_moeda(grupo_c['Faturamento_Total']),
-                    f"{grupo_c['Percentual_Faturamento']:.1f}% do total"
+                    formatar_moeda(UIComponents._safe_float(grupo_c['Faturamento_Total'])),
+                    f"{UIComponents._safe_float(grupo_c['Percentual_Faturamento']):.1f}% do total"
                 )
-                st.write(f"👥 {int(grupo_c['Qtd_Clientes'])} clientes")
-                st.write(f"🎫 Ticket médio: {formatar_moeda(grupo_c['Ticket_Medio'])}")
+                st.write(f"👥 {UIComponents._safe_int(grupo_c['Qtd_Clientes'])} clientes")
+                st.write(f"🎫 Ticket médio: {formatar_moeda(UIComponents._safe_float(grupo_c['Ticket_Medio']))}")
+            else:
+                st.metric("🥉 Grupo C (Básico)", "R$ 0,00", "0.0% do total")
+                st.write("👥 0 clientes")
+                st.write("🎫 Ticket médio: R$ 0,00")
     
     @staticmethod
     def display_ranking_analysis(ranking_clientes, total_geral):
@@ -99,13 +134,13 @@ class UIComponents:
         # Análise 80/20
         top_20_percent = int(len(ranking_clientes) * 0.2)
         valor_top_20 = ranking_clientes.head(top_20_percent)['Valor_Total'].sum()
-        percentual_80_20 = (valor_top_20 / total_geral * 100)
+        percentual_80_20 = (valor_top_20 / total_geral * 100) if total_geral > 0 else 0
         
         st.metric("📈 Regra 80/20", f"{percentual_80_20:.1f}%", "Top 20% dos clientes")
         
         # Top 10 clientes
         top_10_valor = ranking_clientes.head(10)['Valor_Total'].sum()
-        percentual_top_10 = (top_10_valor / total_geral * 100)
+        percentual_top_10 = (top_10_valor / total_geral * 100) if total_geral > 0 else 0
         
         st.metric("🔝 Top 10 Clientes", f"{percentual_top_10:.1f}%", "do faturamento total")
         

@@ -79,8 +79,8 @@ class Visualizations:
         
         return fig
     
-    def create_evolucao_status_chart(self, df_mensal_status):
-        """Cria gráfico de evolução mensal por status."""
+    def create_evolucao_status_chart(self, df_mensal_status, df_clientes_unicos=None, df_churn=None):
+        """Cria gráfico de evolução mensal por status com linhas de clientes únicos e churn."""
         fig = px.bar(
             df_mensal_status,
             x='Mes_Ano_Str',
@@ -90,11 +90,61 @@ class Visualizations:
             labels={'Total': 'Valor (R$)', 'Mes_Ano_Str': 'Mês/Ano'},
             color_discrete_map=self.cores_situacao
         )
+        
+        # Adicionar linha de clientes únicos pagantes se os dados foram fornecidos
+        if df_clientes_unicos is not None and not df_clientes_unicos.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=df_clientes_unicos['Mes_Ano_Str'],
+                    y=df_clientes_unicos['Clientes_Unicos'],
+                    mode='lines+markers',
+                    name='Clientes Únicos Pagantes',
+                    line=dict(color='#FF6B6B', width=3),
+                    marker=dict(size=8, color='#FF6B6B'),
+                    yaxis='y2',
+                    hovertemplate='<b>Clientes Únicos</b><br>Período: %{x}<br>Quantidade: %{y}<extra></extra>'
+                )
+            )
+        
+        # Adicionar linha de churn se os dados foram fornecidos
+        if df_churn is not None and not df_churn.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=df_churn['Mes_Ano_Str'],
+                    y=df_churn['Clientes_Churn'],
+                    mode='lines+markers',
+                    name='Clientes em Churn',
+                    line=dict(color='#FFA500', width=3, dash='dash'),
+                    marker=dict(size=8, color='#FFA500'),
+                    yaxis='y2',
+                    hovertemplate='<b>Clientes em Churn</b><br>Período: %{x}<br>Quantidade: %{y}<br><i>Sem pagamentos há 60+ dias</i><extra></extra>'
+                )
+            )
+            
+        # Configurar segundo eixo Y se há dados de clientes únicos ou churn
+        if (df_clientes_unicos is not None and not df_clientes_unicos.empty) or (df_churn is not None and not df_churn.empty):
+            fig.update_layout(
+                yaxis2=dict(
+                    title='Quantidade de Clientes',
+                    side='right',
+                    overlaying='y',
+                    showgrid=False,
+                    color='#666666'
+                )
+            )
+        
         fig.update_layout(
             height=500,
             xaxis_title='Período',
             yaxis_title='Valor (R$)',
-            hovermode='x unified'
+            hovermode='x unified',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
         )
         return fig
     
